@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -16,33 +18,53 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
-	
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-	
+
 		go handleConnection(conn)
 	}
 }
 
 func handleConnection(conn net.Conn) {
-    defer conn.Close()
+	defer conn.Close()
 
-    for {
-        buf := make([]byte, 1024)
+	for {
+		resp, err := DecodeRESP(bufio.NewReader(conn))
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				fmt.Println("error decoding RESP: ", err.Error())
+				return
+			}
+		}
 
-        if _, err := conn.Read(buf); err != nil {
-            if err == io.EOF {
-                break
-            } else {
-                fmt.Println("error reading from client: ", err.Error())
-                os.Exit(1)
-            }
-        }
+		arr := resp.Array()
+		if arr == nil || len(arr) == 0 {
+			fmt.Println("no command found")
+			return
+		}
 
-        conn.Write([]byte("+PONG\r\n"))
-    }
+		command := arr[0].String()
+		args := arr[1:]
+
+		switch strings.ToLower(command) {
+		case "ping":
+			conn.Write([]byte("+PONG\r\n"))
+		case "echo":
+			if len(args) > 0 {
+				conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(args[0].String()), args[0].String())))
+			} else {
+				conn.Write([]byte("-ERR wrong number of arguments for command '" + command + "'\r\n"))
+			}
+		default:
+			conn.Write([]byte("-ERR unknown command '" + command + "'\r\n"))
+		}
+	}
 }
+
