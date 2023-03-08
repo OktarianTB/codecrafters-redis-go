@@ -19,6 +19,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	storage := NewStorage()
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -26,11 +28,11 @@ func main() {
 			os.Exit(1)
 		}
 
-		go handleConnection(conn)
+		go handleConnection(conn, storage)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, storage *Storage) {
 	defer conn.Close()
 
 	for {
@@ -62,9 +64,26 @@ func handleConnection(conn net.Conn) {
 			} else {
 				conn.Write([]byte("-ERR wrong number of arguments for command '" + command + "'\r\n"))
 			}
+		case "set":
+			if len(args) == 2 {
+				storage.Set(args[0].String(), args[1].String())
+				conn.Write([]byte("+OK\r\n"))
+			} else {
+				conn.Write([]byte("-ERR wrong number of arguments for command '" + command + "'\r\n"))
+			}
+		case "get":
+			if len(args) == 1 {
+				value, err := storage.Get(args[0].String())
+				if err != nil {
+					conn.Write([]byte("-ERR cannot get key '" + args[0].String() + "'\r\n"))
+				} else {
+					conn.Write([]byte(fmt.Sprintf("+%s\r\n", value)))
+				}
+			} else {
+				conn.Write([]byte("-ERR wrong number of arguments for command '" + command + "'\r\n"))
+			}
 		default:
 			conn.Write([]byte("-ERR unknown command '" + command + "'\r\n"))
 		}
 	}
 }
-
