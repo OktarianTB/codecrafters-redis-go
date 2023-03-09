@@ -6,7 +6,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -65,7 +67,21 @@ func handleConnection(conn net.Conn, storage *Storage) {
 				conn.Write([]byte("-ERR wrong number of arguments for command '" + command + "'\r\n"))
 			}
 		case "set":
-			if len(args) == 2 {
+			if len(args) == 4 {
+				if args[2].String() == "px" {
+					expiryStr := args[3].String()
+					expiryInMilliseconds, err := strconv.Atoi(expiryStr)
+
+					if err != nil {
+						conn.Write([]byte(fmt.Sprintf("-ERR PX value (%s) is not an integer\r\n", expiryStr)))
+					} else {
+						storage.SetWithExpiry(args[0].String(), args[1].String(), time.Duration(expiryInMilliseconds)*time.Millisecond)
+						conn.Write([]byte("+OK\r\n"))
+					}
+				} else {
+					conn.Write([]byte(fmt.Sprintf("-ERR unknown option for set: %s\r\n", args[2].String())))
+				}
+			} else if len(args) == 2 {
 				storage.Set(args[0].String(), args[1].String())
 				conn.Write([]byte("+OK\r\n"))
 			} else {
@@ -73,9 +89,9 @@ func handleConnection(conn net.Conn, storage *Storage) {
 			}
 		case "get":
 			if len(args) == 1 {
-				value, err := storage.Get(args[0].String())
-				if err != nil {
-					conn.Write([]byte("-ERR cannot get key '" + args[0].String() + "'\r\n"))
+				value, ok := storage.Get(args[0].String())
+				if !ok {
+					conn.Write([]byte("$-1\r\n"))
 				} else {
 					conn.Write([]byte(fmt.Sprintf("+%s\r\n", value)))
 				}

@@ -1,27 +1,54 @@
 package main
 
-import "fmt"
+import (
+	"time"
+)
 
 type Storage struct {
-	data map[string]string
+	data map[string]Value
+}
+
+type Value struct {
+	value     string
+	expiresAt time.Time
+}
+
+func (v Value) IsExpired() bool {
+	if v.expiresAt.IsZero() {
+		return false
+	}
+
+	return v.expiresAt.Before(time.Now())
 }
 
 func NewStorage() *Storage {
 	return &Storage{
-		data: make(map[string]string),
+		data: make(map[string]Value),
 	}
 }
 
 func (s *Storage) Set(key string, value string) {
-	s.data[key] = value
+	s.data[key] = Value{value: value}
 }
 
-func (s *Storage) Get(key string) (string, error) {
+func (s *Storage) SetWithExpiry(key string, value string, expiry time.Duration) {
+	s.data[key] = Value{
+		value:     value,
+		expiresAt: time.Now().Add(expiry),
+	}
+}
+
+func (s *Storage) Get(key string) (string, bool) {
 	value, ok := s.data[key]
 
 	if !ok {
-		return "", fmt.Errorf("key does not exist: %v", key)
+		return "", false
 	}
 
-	return value, nil
+	if value.IsExpired() {
+		delete(s.data, key)
+		return "", false
+	}
+
+	return value.value, true
 }
